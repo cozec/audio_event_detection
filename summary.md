@@ -9,7 +9,7 @@ Last updated: 2026-07-15
 | 1. Select ESC-50 classes | ✅ Done (8 classes) |
 | 2. YAMNet embeddings + fine-tuned classifier head | ✅ Done (98.1% clip acc, 5-fold CV) |
 | 2.5. Custom DS-CNN comparison | ✅ Done (87.5% clip acc, 24k params) |
-| 3. Streaming inference with overlapping windows | ⬜ Not started |
+| 3. Streaming inference with overlapping windows | ✅ Done (8/8 events, 0 FA, 1.5 s latency, 140× RT) |
 | 4. TFLite export | ⬜ Not started |
 | 5. INT8 quantization | ⬜ Not started |
 | 6. Accuracy / latency / RAM / size / FP-rate comparison | ⬜ Not started |
@@ -115,6 +115,39 @@ glass_breaking over-triggers (precision 0.741). See
   overhead (~10 ms) dominates both at batch 1; the true compute gap will only
   show up after TFLite export (steps 4–6), where the proper latency/RAM
   comparison belongs.
+
+## Step 3 — Streaming inference (overlapping windows)
+
+`src/streaming_inference.py` — `StreamingDetector` consumes arbitrary-size
+audio chunks (mic-callback style, 1024 samples in the simulation), keeps a
+ring buffer, and every **0.48 s hop** runs the newest **0.96 s window**
+through YAMNet + the trained head. Decision layer on top of the per-hop
+posteriors:
+
+- moving average over **K=3** hops (~1.9 s context)
+- fire when smoothed p > **θ=0.5** for **M=2** consecutive hops
+- per-class refractory **3.0 s**
+
+**Simulation**: one random fold-5 clip per class (held out from the head)
+concatenated with 1 s silence gaps → 49 s stream.
+
+| Metric | Value |
+|--------|-------|
+| Hits | **8/8** |
+| False alarms | **0** |
+| Duplicate re-fires (same clip after refractory) | 5 |
+| Detection latency from clip onset | mean 1.46 s, worst 1.88 s |
+| Per-hop inference (YAMNet + head, CPU) | median 2.5 ms (budget 480 ms) |
+| Real-time factor | 0.007 (≈140× faster than real time) |
+
+Timeline: `plots/streaming_timeline.png` — posterior mass sits inside the
+true spans; duplicates are re-fires on long continuous sounds (alarm,
+vacuum, siren) after the 3 s refractory expires, arguably "event still
+ongoing" rather than errors. Latency matches theory:
+window (0.96) + M·hop ≈ 1.4–1.9 s; lower θ/M trades latency for FP risk
+(step 6 sweeps this). Note the 2.5 ms/hop here vs 14.8 ms in step 2.5's
+table — the difference is Keras `predict()` overhead vs direct `model()`
+calls; the streaming path uses the direct call.
 
 ## Environment notes
 

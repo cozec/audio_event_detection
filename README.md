@@ -19,6 +19,10 @@ TFLite export → INT8 quantization → benchmarks → macOS demo.
   depthwise-separable CNN (24k params) trained from scratch on log-mel
   patches with the same framing and CV protocol: **87.5% ± 4.3** clip
   accuracy — transfer learning buys ~10.6 points at 167× the parameter count.
+- **Step 3 — streaming inference**: chunk-fed detector (0.96 s window /
+  0.48 s hop, K-hop smoothing, threshold + refractory). On a simulated 49 s
+  stream of held-out clips: **8/8 detected, 0 false alarms**, mean onset
+  latency 1.46 s, 140× faster than real time on CPU.
 
 ## Results so far
 
@@ -38,6 +42,11 @@ Per-frame posteriors on test clips — why clip-level averaging (and later
 streaming smoothing) matters:
 
 ![Test samples: waveform and posteriors](plots/test_samples_posteriors.png)
+
+Streaming detection on a simulated 49 s live stream (held-out clips, 1 s
+gaps) — 8/8 events, 0 false alarms, mean onset latency 1.46 s:
+
+![Streaming timeline](plots/streaming_timeline.png)
 
 Full details and per-class metrics in [summary.md](summary.md).
 
@@ -71,6 +80,7 @@ cd src
 python extract_embeddings.py   # -> data/yamnet_embeddings.npz
 python train_classifier.py     # -> results/, plots/confusion_matrix.png
 python train_dscnn.py          # step 2.5 -> results/model_comparison.csv
+python streaming_inference.py  # step 3   -> results/streaming_report.txt
 ```
 
 ## Layout
