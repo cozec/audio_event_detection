@@ -10,9 +10,9 @@ Last updated: 2026-07-15
 | 2. YAMNet embeddings + fine-tuned classifier head | ✅ Done (98.1% clip acc, 5-fold CV) |
 | 2.5. Custom DS-CNN comparison | ✅ Done (87.5% clip acc, 24k params) |
 | 3. Streaming inference with overlapping windows | ✅ Done (8/8 events, 0 FA, 1.5 s latency, 140× RT) |
-| 4. TFLite export | ⬜ Not started |
-| 5. INT8 quantization | ⬜ Not started |
-| 6. Accuracy / latency / RAM / size / FP-rate comparison | ⬜ Not started |
+| 4. TFLite export | ✅ Done (5 models in `results/tflite/`) |
+| 5. INT8 quantization | ✅ Done (head 3.9×, DS-CNN 2.1× smaller) |
+| 6. Accuracy / latency / RAM / size / FP-rate comparison | ✅ Done (see edge comparison) |
 | 7. macOS inference demo | ⬜ Not started |
 
 ## Step 1 — Class selection
@@ -148,6 +148,61 @@ window (0.96) + M·hop ≈ 1.4–1.9 s; lower θ/M trades latency for FP risk
 (step 6 sweeps this). Note the 2.5 ms/hop here vs 14.8 ms in step 2.5's
 table — the difference is Keras `predict()` overhead vs direct `model()`
 calls; the streaming path uses the direct call.
+
+## Steps 4–6 — TFLite export, INT8 quantization, edge comparison
+
+**Step 4 (`src/export_tflite.py`)**: YAMNet backbone → TFLite with a fixed
+0.96 s input window (float32 — its FFT/log-mel frontend ops don't quantize;
+needs `SELECT_TF_OPS`); dense head and DS-CNN → float32 TFLite.
+
+**Step 5**: full-integer INT8 for head (calibrated on fold 1–4 embeddings)
+and DS-CNN (calibrated on fold 1–4 log-mel patches):
+
+| Model | float32 | INT8 | shrink |
+|-------|---------|------|--------|
+| dense head | 1,059 KB | 273 KB | 3.9× |
+| DS-CNN | 99 KB | 47 KB | 2.1× |
+| YAMNet backbone | 14.7 MB | — (not quantizable) | — |
+
+**Step 6 (`src/benchmark_tflite.py`)** — four deployable pipelines, fold-5
+clip accuracy end-to-end through TFLite, single-threaded CPU latency
+(median/100 windows, DS-CNN includes its librosa log-mel frontend), RAM =
+median peak-RSS delta of a fresh subprocess, FP rate = step 3 decision layer
+(K=3, θ=0.5, M=2) on a 5 min stream of fold-5 clips from the 42 NON-target
+ESC-50 classes:
+
+| Pipeline | Fold-5 clip acc | ms/window | RAM (MB) | Size (MB) | FP/min @θ=0.5 |
+|----------|----------------|-----------|----------|-----------|---------------|
+| YAMNet f32 + head f32 | **1.000** | 0.63 | 32.8 | 16.09 | 16.4 |
+| YAMNet f32 + head int8 | **1.000** | 0.62 | 31.4 | 15.31 | 16.2 |
+| DS-CNN f32 | 0.781 | 0.66 | 3.1 | **0.10** | 19.0 |
+| DS-CNN int8 | 0.766 | 0.64 | **~0** (noise floor) | **0.05** | 19.0 |
+
+FP rate vs threshold (`results/fp_vs_theta.csv`):
+
+| Pipeline | θ=0.5 | θ=0.6 | θ=0.7 | θ=0.8 | θ=0.9 |
+|----------|-------|-------|-------|-------|-------|
+| YAMNet + head (f32/int8) | 16.4 | 10.8 | 7.0 | 4.4 | 3.0 |
+| DS-CNN (f32/int8) | 19.0 | 14.5 | 9.0 | 5.7 | 3.7 |
+
+**Findings**
+- INT8 is free for the head (identical 1.000 accuracy, 3.9× smaller) and
+  cheap for the DS-CNN (−1.5 pt, 2.1× smaller).
+- On an M-series MacBook latency is a wash (~0.65 ms/window everywhere,
+  0.13% of the 480 ms hop budget) because XNNPACK crushes both models; the
+  10× RAM and 160–320× size gaps are what would matter on an MCU.
+- DS-CNN TFLite fold-5 accuracy (0.781) is below its Keras CV number
+  (0.844 mean) partly because fold 5 was its weakest fold (0.844) and
+  partly from **train/serve skew**: training computed log-mel over the
+  whole 5 s clip, deployment computes it per 0.96 s window, and librosa's
+  reflect-padding differs at window edges. Fixing = train on
+  window-computed features (noted for future work). YAMNet has no such
+  skew (1.000 end-to-end).
+- **Open-set FP rate is the real weakness**: 16–19 events/min at θ=0.5 on
+  never-seen sound classes, still 3–4/min at θ=0.9. The 8-way softmax has
+  no "background/unknown" class, so unfamiliar sounds must land somewhere.
+  Mitigations for a real device: add a background class trained on
+  non-target audio, an energy gate, and/or entropy-based rejection.
 
 ## Environment notes
 

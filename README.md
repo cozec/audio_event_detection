@@ -23,6 +23,13 @@ TFLite export → INT8 quantization → benchmarks → macOS demo.
   0.48 s hop, K-hop smoothing, threshold + refractory). On a simulated 49 s
   stream of held-out clips: **8/8 detected, 0 false alarms**, mean onset
   latency 1.46 s, 140× faster than real time on CPU.
+- **Steps 4–6 — TFLite + INT8 + edge comparison**: all models exported to
+  TFLite; head and DS-CNN fully INT8-quantized (3.9× / 2.1× smaller, head
+  loses zero accuracy). Full pipeline comparison: YAMNet+head = 100% fold-5
+  accuracy at 15–16 MB / ~32 MB RAM; DS-CNN int8 = 77% at **48 KB / ~0 RAM**.
+  Open-set false positives are the main weakness (3–19 FP/min on unknown
+  sounds depending on threshold) — an explicit background class is the
+  next-step fix.
 
 ## Results so far
 
@@ -42,6 +49,16 @@ Per-frame posteriors on test clips — why clip-level averaging (and later
 streaming smoothing) matters:
 
 ![Test samples: waveform and posteriors](plots/test_samples_posteriors.png)
+
+Edge deployment comparison (TFLite, single-threaded CPU; FP rate measured
+on 5 min of never-seen ESC-50 classes with the streaming decision layer):
+
+| Pipeline | Fold-5 clip acc | ms/window | RAM (MB) | Size (MB) | FP/min @θ=0.5 → 0.9 |
+|----------|----------------|-----------|----------|-----------|---------------------|
+| YAMNet f32 + head f32 | **1.000** | 0.63 | 32.8 | 16.09 | 16.4 → 3.0 |
+| YAMNet f32 + head int8 | **1.000** | 0.62 | 31.4 | 15.31 | 16.2 → 3.0 |
+| DS-CNN f32 | 0.781 | 0.66 | 3.1 | **0.10** | 19.0 → 4.0 |
+| DS-CNN int8 | 0.766 | 0.64 | **~0** | **0.05** | 19.0 → 3.4 |
 
 Streaming detection on a simulated 49 s live stream (held-out clips, 1 s
 gaps) — 8/8 events, 0 false alarms, mean onset latency 1.46 s:
@@ -81,6 +98,8 @@ python extract_embeddings.py   # -> data/yamnet_embeddings.npz
 python train_classifier.py     # -> results/, plots/confusion_matrix.png
 python train_dscnn.py          # step 2.5 -> results/model_comparison.csv
 python streaming_inference.py  # step 3   -> results/streaming_report.txt
+python export_tflite.py        # steps 4+5 -> results/tflite/*.tflite
+python benchmark_tflite.py     # step 6   -> results/edge_comparison.csv
 ```
 
 ## Layout
