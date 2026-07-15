@@ -8,13 +8,12 @@ Last updated: 2026-07-15
 |------|--------|
 | 1. Select ESC-50 classes | ✅ Done (8 classes) |
 | 2. YAMNet embeddings + fine-tuned classifier head | ✅ Done (98.1% clip acc, 5-fold CV) |
+| 2.5. Custom DS-CNN comparison | ✅ Done (87.5% clip acc, 24k params) |
 | 3. Streaming inference with overlapping windows | ⬜ Not started |
-| 4. Background-noise / gain augmentation | ⬜ Not started |
-| 5. TFLite export | ⬜ Not started |
-| 6. INT8 quantization | ⬜ Not started |
-| 7. Accuracy / latency / RAM / size / FP-rate comparison | ⬜ Not started |
-| 8. macOS inference demo | ⬜ Not started |
-| 9. Custom DS-CNN comparison | ⬜ Not started |
+| 4. TFLite export | ⬜ Not started |
+| 5. INT8 quantization | ⬜ Not started |
+| 6. Accuracy / latency / RAM / size / FP-rate comparison | ⬜ Not started |
+| 7. macOS inference demo | ⬜ Not started |
 
 ## Step 1 — Class selection
 
@@ -84,6 +83,38 @@ and later, streaming smoothing — is what makes the decision robust.
   1–4, fold 5 held out — the model to carry into TFLite export),
   `results/fold_metrics.csv`, `results/classification_report.txt`,
   `data/yamnet_embeddings.npz` (cached embeddings, 2 MB).
+
+## Step 2.5 — Custom DS-CNN vs YAMNet transfer learning
+
+**DS-CNN**: log-mel features (64 mels, 25 ms window, 10 ms hop) cut into
+0.96 s patches with 0.48 s hop — the same framing YAMNet uses, so numbers are
+directly comparable. Architecture (keyword-spotting style): Conv2D 64 (10×4,
+stride 2×2) → 4× [DepthwiseConv 3×3 → Pointwise 1×1, BN+ReLU] → GAP →
+Dropout 0.3 → Dense(8). Trained from scratch per fold, same 5-fold CV,
+patches inherit clip labels, clip = mean of patch probabilities.
+
+### Model comparison (ordered by clip accuracy)
+
+| Model | Clip acc (5-fold CV) | Frame acc | Params | ms/frame (CPU) |
+|-------|---------------------|-----------|--------|----------------|
+| YAMNet (frozen) + dense head | **0.981 ± 0.017** | 0.832 | 4,014,456 | 14.8 |
+| DS-CNN (custom, from scratch) | 0.875 ± 0.043 | 0.768 | **24,072** | 13.8 |
+
+DS-CNN per-fold: 0.828 / 0.891 / 0.875 / 0.938 / 0.844 (higher variance than
+YAMNet's 0.969–1.000). Weakest class is car_horn (F1 0.686, recall 0.60);
+glass_breaking over-triggers (precision 0.741). See
+`plots/dscnn_confusion_matrix.png`, `results/dscnn_classification_report.txt`,
+`results/model_comparison.csv`.
+
+**Takeaways**
+- Transfer learning is worth ~10.6 points of clip accuracy at this data size
+  (256 training clips/fold): 98.1% vs 87.5%. AudioSet pretraining is doing a
+  lot of work.
+- The DS-CNN is **167× smaller** (24k vs 4M params) — the real edge trade-off.
+- The ms/frame numbers are nearly equal only because Keras `predict()` call
+  overhead (~10 ms) dominates both at batch 1; the true compute gap will only
+  show up after TFLite export (steps 4–6), where the proper latency/RAM
+  comparison belongs.
 
 ## Environment notes
 
