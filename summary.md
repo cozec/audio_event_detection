@@ -13,7 +13,7 @@ Last updated: 2026-07-15
 | 4. TFLite export | ✅ Done (5 models in `results/tflite/`) |
 | 5. INT8 quantization | ✅ Done (head 3.9×, DS-CNN 2.1× smaller) |
 | 6. Accuracy / latency / RAM / size / FP-rate comparison | ✅ Done (see edge comparison) |
-| 7. macOS inference demo | ⬜ Not started |
+| 7. macOS inference demo | ✅ Done (`src/mic_demo.py`, live mic or file replay) |
 
 ## Step 1 — Class selection
 
@@ -203,6 +203,26 @@ FP rate vs threshold (`results/fp_vs_theta.csv`):
   no "background/unknown" class, so unfamiliar sounds must land somewhere.
   Mitigations for a real device: add a background class trained on
   non-target audio, an energy gate, and/or entropy-based rejection.
+
+## Step 7 — macOS inference demo
+
+`src/mic_demo.py` — the step 3 `StreamingDetector` running on the exported
+TFLite models (YAMNet f32 backbone + **INT8 head**), fed by the Mac
+microphone via `sounddevice` (16 kHz mono, 1024-sample callbacks). Live
+terminal readout of the top-3 smoothed class probabilities each 0.48 s hop;
+prints an EVENT line (with terminal bell) when the decision layer fires.
+
+```bash
+python mic_demo.py                      # live mic (grant mic access)
+python mic_demo.py --file x.wav         # replay a wav in real time
+python mic_demo.py --file x.wav --fast  # no pacing (for testing)
+```
+
+Verified via file replay of a held-out fold-5 dog clip: event fired at
+1.4 s with p=1.00 (matching step 3's expected latency of window + M·hop),
+median inference 0.7 ms/hop through TFLite. Live-mic mode requires
+microphone permission for the terminal app (System Settings → Privacy &
+Security → Microphone) — macOS prompts on first run.
 
 ## Environment notes
 

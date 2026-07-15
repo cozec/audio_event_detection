@@ -30,6 +30,10 @@ TFLite export → INT8 quantization → benchmarks → macOS demo.
   Open-set false positives are the main weakness (3–19 FP/min on unknown
   sounds depending on threshold) — an explicit background class is the
   next-step fix.
+- **Step 7 — macOS live demo**: `mic_demo.py` runs the streaming detector
+  on the TFLite models (f32 backbone + int8 head) from the Mac microphone,
+  with a live top-3 probability readout and event alerts. Also replays wav
+  files (`--file`, `--fast`) for headless testing.
 
 ## Results so far
 
@@ -78,7 +82,8 @@ Full details and per-class metrics in [summary.md](summary.md).
 ```bash
 python3.12 -m venv .venv          # TensorFlow needs Python <= 3.12/3.13
 source .venv/bin/activate
-pip install tensorflow tensorflow-hub librosa soundfile scikit-learn pandas matplotlib
+pip install tensorflow tensorflow-hub librosa soundfile scikit-learn pandas matplotlib sounddevice
+pip install "setuptools<81"   # tensorflow_hub still imports pkg_resources
 ```
 
 ## Data
@@ -100,6 +105,7 @@ python train_dscnn.py          # step 2.5 -> results/model_comparison.csv
 python streaming_inference.py  # step 3   -> results/streaming_report.txt
 python export_tflite.py        # steps 4+5 -> results/tflite/*.tflite
 python benchmark_tflite.py     # step 6   -> results/edge_comparison.csv
+python mic_demo.py             # step 7   live mic demo (or --file x.wav)
 ```
 
 ## Layout
