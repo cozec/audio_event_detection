@@ -18,8 +18,11 @@ benchmarks → macOS demo → compare with a small custom DS-CNN.
 
 See [summary.md](summary.md) for results.
 
-**Pipeline diagram** (training + inference, sliding-window handling of
-variable-length audio): https://claude.ai/code/artifact/0eef4fa5-f363-48db-ad40-375cba35cbb2
+## Pipeline
+
+![Training & inference pipeline](plots/pipeline.png)
+
+(Interactive version: https://claude.ai/code/artifact/0eef4fa5-f363-48db-ad40-375cba35cbb2)
 
 ## Setup
 
